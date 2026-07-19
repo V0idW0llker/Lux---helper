@@ -1,5 +1,7 @@
 import datetime
 import random
+import threading
+import tkinter as tk
 
 import pyttsx3
 
@@ -16,8 +18,7 @@ def init_voice():
     return engine
 
 
-def say(engine, text):
-    print('Люкс: ' + text)
+def speak(engine, text):
     engine.say(text)
     engine.runAndWait()
 
@@ -47,71 +48,108 @@ def has_any(command, phrases):
     return False
 
 
-def process_command(engine, command):
-    # возвращаем False, если пора завершать программу
+def get_answer(command):
+    # возвращает ответ Люкса и флаг: работать дальше или завершаться
     command = command.lower().strip()
 
-    if command == '':
-        return True
-
     if has_any(command, ['выход', 'пока', 'до свидания', 'отключись', 'спокойной ночи']):
-        say(engine, random.choice([
+        answer = random.choice([
             'До встречи!',
             'Пока-пока!',
             'Хорошего дня, обращайся ещё!',
             'До свидания!',
-        ]))
-        return False
+        ])
+        return answer, False
     elif has_any(command, ['как дела', 'как ты', 'чо как', 'че как', 'как жизнь', 'как настроение', 'как сам']):
-        say(engine, random.choice([
+        answer = random.choice([
             'Отлично, работаю в штатном режиме!',
             'Всё супер, спасибо что спросил!',
             'Лучше всех, ведь я разговариваю с тобой!',
             'Нормально, процессор не греется, настроение бодрое.',
-        ]))
+        ])
     elif has_any(command, ['привет', 'здравствуй', 'здорово', 'хай', 'ку', 'салют', 'добрый день', 'доброе утро', 'добрый вечер']):
-        say(engine, random.choice([
+        answer = random.choice([
             'Привет! Чем могу помочь?',
             'Приветствую! Слушаю тебя.',
             'Здравствуй! Что будем делать?',
             'Привет-привет!',
-        ]))
+        ])
     elif has_any(command, ['время', 'который час', 'сколько времени', 'часы']):
-        say(engine, get_time_text())
+        answer = get_time_text()
     elif has_any(command, ['кто ты', 'как тебя зовут', 'ты кто', 'представься', 'твое имя', 'твоё имя']):
-        say(engine, random.choice([
+        answer = random.choice([
             'Я Люкс, твой голосовой помощник.',
             'Меня зовут Люкс, я живу в твоём компьютере.',
             'Люкс — местный голосовой помощник, к твоим услугам.',
-        ]))
+        ])
     elif has_any(command, ['помощь', 'что умеешь', 'что ты можешь', 'команды', 'помоги']):
-        say(engine, 'Я умею здороваться, говорить время и отвечать на простые вопросы. Скоро научусь большему!')
+        answer = 'Я умею здороваться, говорить время и отвечать на простые вопросы. Скоро научусь большему!'
     elif has_any(command, ['спасибо', 'благодарю', 'молодец']):
-        say(engine, random.choice([
+        answer = random.choice([
             'Всегда пожалуйста!',
             'Рад помочь!',
             'Обращайся!',
-        ]))
+        ])
     else:
-        say(engine, random.choice([
+        answer = random.choice([
             'Пока не знаю такую команду.',
             'Хм, этому меня ещё не научили.',
             'Не понял тебя, попробуй сказать по-другому.',
             'Такого я пока не умею, но обязательно научусь.',
-        ]))
+        ])
 
-    return True
+    return answer, True
 
 
 def main():
     engine = init_voice()
-    say(engine, get_greeting())
-    say(engine, 'Я Люкс, твой голосовой помощник.')
 
-    working = True
-    while working:
-        command = input('Ты: ')
-        working = process_command(engine, command)
+    root = tk.Tk()
+    root.title('Люкс — голосовой помощник')
+    root.geometry('520x420')
+
+    chat = tk.Text(root, state='disabled', wrap='word', font=('Segoe UI', 11))
+    chat.pack(fill='both', expand=True, padx=10, pady=(10, 5))
+
+    bottom = tk.Frame(root)
+    bottom.pack(fill='x', padx=10, pady=(0, 10))
+
+    entry = tk.Entry(bottom, font=('Segoe UI', 11))
+    entry.pack(side='left', fill='x', expand=True, ipady=4)
+    entry.focus()
+
+    def add_message(author, text):
+        chat.config(state='normal')
+        chat.insert('end', author + ': ' + text + '\n')
+        chat.config(state='disabled')
+        chat.see('end')
+
+    def lux_say(text):
+        add_message('Люкс', text)
+        # озвучиваем в отдельном потоке, чтобы окно не зависало
+        threading.Thread(target=speak, args=(engine, text), daemon=True).start()
+
+    def on_send(event=None):
+        command = entry.get().strip()
+        if command == '':
+            return
+        entry.delete(0, 'end')
+        add_message('Ты', command)
+        answer, working = get_answer(command)
+        lux_say(answer)
+        if not working:
+            # даём договорить и закрываем окно
+            root.after(2000, root.destroy)
+
+    send_button = tk.Button(bottom, text='Отправить', command=on_send)
+    send_button.pack(side='left', padx=(5, 0))
+
+    root.bind('<Return>', on_send)
+
+    lux_say(get_greeting())
+    lux_say('Я Люкс, твой голосовой помощник.')
+
+    root.mainloop()
 
 
 if __name__ == '__main__':
