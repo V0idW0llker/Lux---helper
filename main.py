@@ -1,7 +1,9 @@
 import datetime
 import random
+import subprocess
 import threading
 import tkinter as tk
+import webbrowser
 
 import pyttsx3
 
@@ -48,6 +50,27 @@ def has_any(command, phrases):
     return False
 
 
+def open_something(command):
+    # смотрим, что именно просят открыть, и запускаем это
+    if has_any(command, ['ютуб', 'youtube']):
+        webbrowser.open('https://www.youtube.com')
+        return 'Открываю Ютуб!'
+    elif has_any(command, ['браузер', 'интернет', 'гугл', 'google']):
+        webbrowser.open('https://www.google.com')
+        return 'Открываю браузер!'
+    elif 'блокнот' in command:
+        subprocess.Popen('notepad.exe')
+        return 'Открываю блокнот!'
+    elif 'калькулятор' in command:
+        subprocess.Popen('calc.exe')
+        return 'Открываю калькулятор!'
+    elif 'проводник' in command:
+        subprocess.Popen('explorer.exe')
+        return 'Открываю проводник!'
+    else:
+        return 'Не понял, что нужно открыть. Я умею открывать браузер, ютуб, блокнот, калькулятор и проводник.'
+
+
 def get_answer(command):
     # возвращает ответ Люкса и флаг: работать дальше или завершаться
     command = command.lower().strip()
@@ -60,6 +83,8 @@ def get_answer(command):
             'До свидания!',
         ])
         return answer, False
+    elif has_any(command, ['открой', 'запусти', 'включи']):
+        answer = open_something(command)
     elif has_any(command, ['как дела', 'как ты', 'чо как', 'че как', 'как жизнь', 'как настроение', 'как сам']):
         answer = random.choice([
             'Отлично, работаю в штатном режиме!',
@@ -67,7 +92,7 @@ def get_answer(command):
             'Лучше всех, ведь я разговариваю с тобой!',
             'Нормально, процессор не греется, настроение бодрое.',
         ])
-    elif has_any(command, ['привет', 'здравствуй', 'здорово', 'хай', 'ку', 'салют', 'добрый день', 'доброе утро', 'добрый вечер']):
+    elif has_any(command, ['привет', 'здравствуй', 'здорово', 'хай', 'салют', 'добрый день', 'доброе утро', 'добрый вечер']):
         answer = random.choice([
             'Привет! Чем могу помочь?',
             'Приветствую! Слушаю тебя.',
@@ -83,7 +108,7 @@ def get_answer(command):
             'Люкс — местный голосовой помощник, к твоим услугам.',
         ])
     elif has_any(command, ['помощь', 'что умеешь', 'что ты можешь', 'команды', 'помоги']):
-        answer = 'Я умею здороваться, говорить время и отвечать на простые вопросы. Скоро научусь большему!'
+        answer = 'Я умею говорить время, открывать браузер, ютуб, блокнот, калькулятор и проводник. И просто поболтать!'
     elif has_any(command, ['спасибо', 'благодарю', 'молодец']):
         answer = random.choice([
             'Всегда пожалуйста!',
@@ -101,53 +126,98 @@ def get_answer(command):
     return answer, True
 
 
+BG_COLOR = '#141420'
+USER_BUBBLE = '#4c6ef5'
+LUX_BUBBLE = '#26263a'
+TEXT_COLOR = '#e8e8f0'
+
+# задержка перед ответом и скорость печати (в миллисекундах)
+ANSWER_DELAY = 200
+TYPE_SPEED = 25
+
+
 def main():
     engine = init_voice()
 
     root = tk.Tk()
-    root.title('Люкс — голосовой помощник')
-    root.geometry('520x420')
+    root.title('Люкс')
+    root.geometry('420x560')
+    root.configure(bg=BG_COLOR)
+    root.minsize(320, 400)
 
-    chat = tk.Text(root, state='disabled', wrap='word', font=('Segoe UI', 11))
-    chat.pack(fill='both', expand=True, padx=10, pady=(10, 5))
+    chat = tk.Text(root, state='disabled', wrap='word', font=('Segoe UI', 11),
+                   bg=BG_COLOR, fg=TEXT_COLOR, bd=0, highlightthickness=0,
+                   padx=14, pady=10, cursor='arrow')
+    chat.pack(fill='both', expand=True)
 
-    bottom = tk.Frame(root)
-    bottom.pack(fill='x', padx=10, pady=(0, 10))
+    # стили сообщений: свои — справа синим, Люкса — слева серым
+    chat.tag_config('user', justify='right', background=USER_BUBBLE,
+                    foreground='white', lmargin1=80, lmargin2=80, rmargin=6,
+                    spacing1=4, spacing3=10)
+    chat.tag_config('lux', justify='left', background=LUX_BUBBLE,
+                    foreground=TEXT_COLOR, lmargin1=6, lmargin2=6, rmargin=80,
+                    spacing1=4, spacing3=10)
 
-    entry = tk.Entry(bottom, font=('Segoe UI', 11))
-    entry.pack(side='left', fill='x', expand=True, ipady=4)
+    bottom = tk.Frame(root, bg=BG_COLOR)
+    bottom.pack(fill='x', padx=12, pady=12)
+
+    entry = tk.Entry(bottom, font=('Segoe UI', 11), bg=LUX_BUBBLE, fg=TEXT_COLOR,
+                     bd=0, insertbackground=TEXT_COLOR,
+                     highlightthickness=1, highlightbackground='#33334d',
+                     highlightcolor=USER_BUBBLE)
+    entry.pack(fill='x', ipady=8, ipadx=8)
     entry.focus()
 
     def add_message(author, text):
         chat.config(state='normal')
-        chat.insert('end', author + ': ' + text + '\n')
+        chat.insert('end', ' ' + text + ' \n', author)
         chat.config(state='disabled')
         chat.see('end')
 
+    is_typing = False
+
+    def type_char(text, i):
+        nonlocal is_typing
+        chat.config(state='normal')
+        if i < len(text):
+            chat.insert('end', text[i], 'lux')
+            chat.config(state='disabled')
+            chat.see('end')
+            root.after(TYPE_SPEED, type_char, text, i + 1)
+        else:
+            chat.insert('end', ' \n', 'lux')
+            chat.config(state='disabled')
+            chat.see('end')
+            is_typing = False
+
     def lux_say(text):
-        add_message('Люкс', text)
+        nonlocal is_typing
+        is_typing = True
         # озвучиваем в отдельном потоке, чтобы окно не зависало
         threading.Thread(target=speak, args=(engine, text), daemon=True).start()
+        chat.config(state='normal')
+        chat.insert('end', ' ', 'lux')
+        chat.config(state='disabled')
+        root.after(ANSWER_DELAY, type_char, text, 0)
 
     def on_send(event=None):
+        # пока Люкс печатает, новые сообщения не отправляем
+        if is_typing:
+            return
         command = entry.get().strip()
         if command == '':
             return
         entry.delete(0, 'end')
-        add_message('Ты', command)
+        add_message('user', command)
         answer, working = get_answer(command)
         lux_say(answer)
         if not working:
-            # даём договорить и закрываем окно
-            root.after(2000, root.destroy)
+            # даём допечатать и договорить, потом закрываем окно
+            root.after(2500, root.destroy)
 
-    send_button = tk.Button(bottom, text='Отправить', command=on_send)
-    send_button.pack(side='left', padx=(5, 0))
+    entry.bind('<Return>', on_send)
 
-    root.bind('<Return>', on_send)
-
-    lux_say(get_greeting())
-    lux_say('Я Люкс, твой голосовой помощник.')
+    lux_say(get_greeting() + ' Я Люкс, твой голосовой помощник.')
 
     root.mainloop()
 
