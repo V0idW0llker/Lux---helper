@@ -7,6 +7,7 @@ import pyttsx3
 from PIL import Image, ImageTk
 
 from commands import get_answer, get_greeting
+from listen import start_recording, stop_and_recognize
 
 
 def init_voice():
@@ -164,7 +165,12 @@ def main():
                      bd=0, insertbackground=TEXT_COLOR,
                      highlightthickness=1, highlightbackground='#33334d',
                      highlightcolor=USER_BUBBLE)
-    entry.pack(fill='x', ipady=8, ipadx=8)
+
+    mic_btn = tk.Button(bottom, text='🎤', font=('Segoe UI', 13),
+                        bg=LUX_BUBBLE, fg=TEXT_COLOR, activebackground=USER_BUBBLE,
+                        activeforeground='white', bd=0, cursor='hand2')
+    mic_btn.pack(side='right', padx=(8, 0), ipadx=6)
+    entry.pack(side='left', fill='x', expand=True, ipady=8, ipadx=8)
     entry.focus()
 
     chat = tk.Text(root, state='disabled', wrap='word', font=('Segoe UI', 11),
@@ -187,7 +193,7 @@ def main():
     def add_message(author, text):
         chat.config(state='normal')
         chat.insert('end', ' ' + text + ' \n', author)
-        chat.config(state='disabled')
+        chat.config(state='disabled') 
         chat.see('end')
 
     is_typing = False
@@ -240,21 +246,72 @@ def main():
         typing_job['n'] = len(text)
         typing_job['after'] = root.after(ANSWER_DELAY, reveal_char, text_start, 0, len(text))
 
-    def on_send(event=None):
+    def handle_command(command):
+        # сюда приходит команда и из поля ввода, и распознанная с микрофона.
         # если Люкс ещё печатает — мгновенно допечатываем прошлый ответ,
         # чтобы новая команда не терялась, и продолжаем
         if is_typing:
             finish_typing()
-        command = entry.get().strip()
-        if command == '':
-            return
-        entry.delete(0, 'end')
         add_message('user', command)
         answer, working = get_answer(command)
         lux_say(answer)
         if not working:
             # даём допечатать и договорить, потом закрываем окно
             root.after(2500, root.destroy)
+
+    def on_send(event=None):
+        command = entry.get().strip()
+        if command == '':
+            return
+        entry.delete(0, 'end')
+        handle_command(command)
+
+    def mic_done(text):
+        # вернулись из потока распознавания — снова разрешаем кнопку и поле
+        mic_btn.config(text='🎤', state='normal')
+        entry.config(state='normal')
+        entry.focus()
+        if text is None:
+            lux_say('Не получилось распознать. Проверь микрофон и интернет.')
+        elif text == '':
+            lux_say('Я тебя не расслышал, повтори пожалуйста.')
+        else:
+            handle_command(text)
+
+    # кнопка работает как рация: зажал — говоришь, отпустил — Люкс распознаёт
+    is_recording = False
+
+    def on_mic_press(event=None):
+        nonlocal is_recording
+        # кнопка занята — идёт распознавание прошлой фразы
+        if mic_btn['state'] == 'disabled':
+            return
+        if is_typing:
+            finish_typing()
+        if not start_recording():
+            lux_say('Не вижу микрофон. Проверь, подключён ли он.')
+            return
+        is_recording = True
+        mic_btn.config(text='🔴')
+        entry.config(state='disabled')
+
+    def on_mic_release(event=None):
+        nonlocal is_recording
+        if not is_recording:
+            return
+        is_recording = False
+        mic_btn.config(text='…', state='disabled')
+
+        # распознаём в отдельном потоке, чтобы окно не замирало
+        def worker():
+            text = stop_and_recognize()
+            # обновлять окно можно только из главного потока — через after
+            root.after(0, mic_done, text)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    mic_btn.bind('<ButtonPress-1>', on_mic_press)
+    mic_btn.bind('<ButtonRelease-1>', on_mic_release)
 
     entry.bind('<Return>', on_send)
 

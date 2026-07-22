@@ -1,2 +1,4 @@
 pyttsx3
 Pillow
+SpeechRecognition
+sounddevice
